@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sistema solare</title>
+<style>
+:root {
+  --bg:#eef1f5; --ink:#1d2433; --muted:#667085; --orbit:rgba(29,36,51,.16); --sun:#e8892b;
+  --panel:rgba(255,255,255,.86); --line:rgba(29,36,51,.14);
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#0b1020;--ink:#e8ecf5;--muted:#8b95ab;--orbit:rgba(232,236,245,.14);--sun:#ffb347;--panel:rgba(16,22,40,.86);--line:rgba(232,236,245,.16)}
+}
+:root[data-theme="dark"]{--bg:#0b1020;--ink:#e8ecf5;--muted:#8b95ab;--orbit:rgba(232,236,245,.14);--sun:#ffb347;--panel:rgba(16,22,40,.86);--line:rgba(232,236,245,.16)}
+html,body{height:100%;margin:0;background:var(--bg)}
+body{position:relative;overflow:hidden;min-height:100vh;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--sun);outline-offset:2px}
+nav{position:absolute;top:12px;left:12px;right:12px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+nav button{flex:none;display:flex;align-items:center;gap:7px;padding:6px 11px;border:1px solid var(--line);border-radius:999px;background:transparent;font-size:12.5px;color:var(--muted)}
+nav button i{width:8px;height:8px;border-radius:50%}
+nav button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.cap{position:absolute;left:16px;bottom:calc(14px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:12px;font-size:13px;color:var(--muted);transition:opacity .3s}
+.cap button{padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:transparent;font-size:12.5px}
+body.focus .cap{opacity:0;pointer-events:none}
+.panel{position:absolute;right:20px;top:calc(60px + env(safe-area-inset-top,0px));width:320px;max-height:calc(100% - 90px);overflow:auto;box-sizing:border-box;padding:20px;border:1px solid var(--line);border-radius:14px;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:0;transform:translateX(16px);pointer-events:none;transition:opacity .3s,transform .3s}
+.panel.on{opacity:1;transform:none;pointer-events:auto}
+.panel h2{margin:0;font-size:28px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+.panel h2 i{width:12px;height:12px;border-radius:50%;flex:none}
+.sub{margin:4px 0 14px;color:var(--muted);font-size:14px}
+dl{margin:0}
+dl div{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+dt{color:var(--muted);flex:none}
+dd{margin:0;text-align:right}
+.fun{margin:14px 0 16px;font-size:14px;line-height:1.5}
+.pn{display:flex;gap:8px}
+.pn button{flex:1;padding:8px;border:1px solid var(--line);border-radius:8px;background:transparent;font-size:13px}
+.x{position:absolute;top:10px;right:10px;width:32px;height:32px;border:0;background:transparent;font-size:22px;line-height:1;color:var(--muted)}
+@media (max-width:720px){
+  .panel{left:12px;right:12px;top:auto;width:auto;bottom:calc(12px + env(safe-area-inset-bottom,0px));max-height:46%;padding:16px;transform:translateY(16px)}
+  .panel h2{font-size:24px}
+}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Sistema solare interattivo: tocca un pianeta per vedere le sue caratteristiche"></canvas>
+<nav id="nav" aria-label="Corpi celesti"></nav>
+<section class="panel" id="panel" aria-live="polite">
+  <button class="x" id="cl" type="button" aria-label="Chiudi">&times;</button>
+  <h2><i id="dot"></i><span id="nm"></span></h2>
+  <p class="sub" id="tp"></p>
+  <dl id="rows"></dl>
+  <p class="fun" id="fun"></p>
+  <div class="pn"><button id="pv" type="button">&lsaquo; Precedente</button><button id="nx" type="button">Successivo &rsaquo;</button></div>
+</section>
+<div class="cap"><button id="pz" type="button">Pausa</button><span>Tocca un pianeta per esplorarlo</span></div>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var cv=$("c"),ctx=cv.getContext("2d"),nav=$("nav"),panel=$("panel"),pz=$("pz");
+var reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+var L=["Diametro","Distanza dal Sole","Anno","Giorno","Lune","Temperatura"];
+var B=[
+{n:"Sole",t:"Stella (nana gialla)",c:"#ffb347",s:9,l:["Diametro","Età","Superficie","Nucleo","Massa"],d:["1.392.000 km","4,6 miliardi di anni","circa 5.500 °C","circa 15 milioni °C","99,86% del sistema solare"],f:"Dentro al Sole entrerebbero circa 1,3 milioni di Terre."},
+{n:"Mercurio",t:"Pianeta roccioso",c:"#a8a39a",s:2.4,p:.24,d:["4.879 km","57,9 milioni di km","88 giorni terrestri","59 giorni terrestri","Nessuna","da −180 a 430 °C"],f:"È il più piccolo e il più veloce, ma da un'alba all'altra passano 176 giorni terrestri: due dei suoi anni."},
+{n:"Venere",t:"Pianeta roccioso",c:"#d9b27c",s:3.6,p:.62,d:["12.104 km","108,2 milioni di km","225 giorni terrestri","243 giorni terrestri","Nessuna","circa 465 °C"],f:"È il pianeta più caldo, più di Mercurio, e ruota al contrario: il Sole sorge a ovest."},
+{n:"Terra",t:"Pianeta roccioso",c:"#4f8fd6",s:3.8,p:1,moon:1,d:["12.742 km","149,6 milioni di km","365,25 giorni","24 ore","1 (la Luna)","media di circa 15 °C"],f:"È l'unico posto in cui conosciamo la vita. Il 71% della superficie è coperto d'acqua."},
+{n:"Marte",t:"Pianeta roccioso",c:"#c9603f",s:3,p:1.88,d:["6.779 km","227,9 milioni di km","687 giorni terrestri","24 ore e 37 minuti","2 (Fobos e Deimos)","media di circa −63 °C"],f:"Ospita l'Olympus Mons, il vulcano più alto del sistema solare: circa 22 km."},
+{n:"Giove",t:"Gigante gassoso",c:"#c79a6b",s:7.5,p:11.86,d:["139.820 km","778,5 milioni di km","11,9 anni terrestri","circa 10 ore","oltre 90","circa −110 °C (nubi)"],f:"La Grande Macchia Rossa è una tempesta più larga della Terra, osservata da secoli."},
+{n:"Saturno",t:"Gigante gassoso",c:"#d6c08a",s:6.2,p:29.46,ring:1,d:["116.460 km","1,43 miliardi di km","29,5 anni terrestri","circa 10,5 ore","oltre 200","circa −140 °C"],f:"È meno denso dell'acqua: galleggerebbe in una vasca abbastanza grande. I suoi anelli sono sottilissimi."},
+{n:"Urano",t:"Gigante di ghiaccio",c:"#7ec8cf",s:5,p:84,d:["50.724 km","2,87 miliardi di km","84 anni terrestri","circa 17 ore","28","circa −195 °C"],f:"Ruota quasi su un fianco, con un'inclinazione di circa 98°."},
+{n:"Nettuno",t:"Gigante di ghiaccio",c:"#4a63c9",s:4.9,p:165,d:["49.244 km","4,5 miliardi di km","165 anni terrestri","circa 16 ore","16","circa −200 °C"],f:"Ha i venti più veloci del sistema solare, oltre 2.000 km/h. Fu trovato con i calcoli nel 1846."}
+];
+B.forEach(function(b,i){b.id=i;b.sc=1;b.a0=i*.9+.4;b.w=i?.55/Math.pow(b.p,.7):0;
+  var e=document.createElement("button");e.type="button";e.innerHTML="<i style='background:"+b.c+"'></i>"+b.n;
+  e.onclick=function(){select(focus===i?-1:i)};nav.appendChild(e);b.btn=e;e.setAttribute("aria-pressed","false")});
+var W,H,dpr,k,R,t=0,last=0,lw=0,lh=0,focus=-1,paused=false,hits=[];
+var S={z:1,x:0,y:0,cx:0,cy:0};
+var css=function(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()};
+
+function orbitR(b){return R*(.2+.8*(b.id-1)/7)}
+function pos(b){if(!b.id)return[0,0];var r=orbitR(b),a=b.a0+t*b.w;return[Math.cos(a)*r,Math.sin(a)*r]}
+function layout(){
+  var wide=W>720,aw=wide?W-352:W,ah=wide?H-70:H*.54-50;
+  return{cx:wide?aw/2:W/2,cy:wide?H/2+24:50+ah/2,rt:Math.min(110,Math.min(aw,ah)*.2)};
+}
+function size(){
+  dpr=devicePixelRatio||1;lw=cv.clientWidth;lh=cv.clientHeight;W=lw||innerWidth||360;H=Math.max(lh||innerHeight||640,320);
+  cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  R=Math.max(60,Math.min(W,H)/2-34);k=Math.min(1.6,Math.max(.8,R/300));
+  if(focus<0){S.cx=W/2;S.cy=H/2}
+}
+function step(dt){
+  var lay=layout(),f=focus>=0,b=f?B[focus]:null,p=f?pos(b):[0,0];
+  var tz=f?(b.id?2.2:1.6):1,tcx=f?lay.cx:W/2,tcy=f?lay.cy:H/2;
+  var kk=1-Math.exp(-dt*5);
+  S.z*=Math.pow(tz/S.z,kk);S.x+=(p[0]-S.x)*kk;S.y+=(p[1]-S.y)*kk;S.cx+=(tcx-S.cx)*kk;S.cy+=(tcy-S.cy)*kk;
+  B.forEach(function(q){var ts=(f&&q.id===focus)?lay.rt*(q.id?1:1.15)/(q.s*k):1;q.sc*=Math.pow(ts/q.sc,kk)});
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  var ox=S.cx-S.x*S.z,oy=S.cy-S.y*S.z,f=focus>=0,dim=f?.38:1,lab=Math.max(0,1-(S.z-1)*1.2);
+  ctx.lineWidth=1;ctx.strokeStyle=css("--orbit");
+  for(var i=1;i<9;i++){ctx.globalAlpha=(f&&i===focus)?1:dim;ctx.beginPath();ctx.arc(ox,oy,orbitR(B[i])*S.z,0,7);ctx.stroke()}
+  var order=B.slice().sort(function(a,b){return(a.id===focus)-(b.id===focus)});
+  var sun=css("--sun"),mu=css("--muted");
+  order.forEach(function(b){
+    var p=pos(b),x=ox+p[0]*S.z,y=oy+p[1]*S.z,r=b.s*k*b.sc;
+    hits[b.id]=[x,y,r];ctx.globalAlpha=(!f||b.id===focus)?1:dim;
+    if(!b.id){
+      var g=ctx.createRadialGradient(x,y,0,x,y,r*4.4);g.addColorStop(0,sun);g.addColorStop(.23,sun);g.addColorStop(1,"rgba(255,170,60,0)");
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r*4.4,0,7);ctx.fill();
+      ctx.fillStyle=sun;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
+    }else{
+      ctx.fillStyle=b.c;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
+      if(b.ring){ctx.strokeStyle=b.c;ctx.lineWidth=1.2+r*.04;ctx.beginPath();ctx.ellipse(x,y,r*1.9,r*.6,-.4,0,7);ctx.stroke();ctx.lineWidth=1;ctx.strokeStyle=css("--orbit")}
+      if(b.moon){var m=t*3.2;ctx.fillStyle=mu;ctx.beginPath();ctx.arc(x+Math.cos(m)*r*2.4,y+Math.sin(m)*r*2.4,Math.max(1.3,r*.27),0,7);ctx.fill()}
+    }
+    if(lab>.02){ctx.globalAlpha=lab*.8;ctx.fillStyle=mu;ctx.font="11px ui-sans-serif,system-ui,sans-serif";ctx.textAlign="center";ctx.fillText(b.n,x,y+Math.max(r,b.id?0:r*2.2)+15)}
+  });
+  ctx.globalAlpha=1;
+}
+function select(id){
+  focus=id;document.body.classList.toggle("focus",id>=0);panel.classList.toggle("on",id>=0);
+  B.forEach(function(b){b.btn.setAttribute("aria-pressed",b.id===id?"true":"false")});
+  if(id<0)return;
+  var b=B[id],l=b.l||L;
+  $("nm").textContent=b.n;$("dot").style.background=b.c;$("tp").textContent=b.t;$("fun").textContent=b.f;
+  $("rows").innerHTML=b.d.map(function(v,i){return"<div><dt>"+l[i]+"</dt><dd>"+v+"</dd></div>"}).join("");
+  b.btn.scrollIntoView({block:"nearest",inline:"center"});
+}
+cv.addEventListener("click",function(e){
+  var rc=cv.getBoundingClientRect(),mx=e.clientX-rc.left,my=e.clientY-rc.top,best=-1,bd=1e9;
+  hits.forEach(function(h,i){var d=Math.hypot(h[0]-mx,h[1]-my);if(d<Math.max(h[2]+10,22)&&d<bd){bd=d;best=i}});
+  if(best>=0)select(best);else if(focus>=0)select(-1);
+});
+$("cl").onclick=function(){select(-1)};
+$("pv").onclick=function(){select((focus+8)%9)};
+$("nx").onclick=function(){select((focus+1)%9)};
+pz.onclick=function(){paused=!paused;pz.textContent=paused?"Riprendi":"Pausa"};
+addEventListener("keydown",function(e){
+  if(e.key==="Escape")select(-1);
+  else if(focus>=0&&e.key==="ArrowRight")select((focus+1)%9);
+  else if(focus>=0&&e.key==="ArrowLeft")select((focus+8)%9);
+});
+addEventListener("resize",size);
+size();
+(function loop(ts){
+  var dt=last?Math.min(.05,(ts-last)/1000):0;last=ts;
+  if(cv.clientWidth!==lw||cv.clientHeight!==lh)size();
+  if(!paused)t+=dt;
+  try{step(dt);draw()}catch(e){}
+  requestAnimationFrame(loop);
+})(0);
+})();
+</script>
+</body>
+</html>
